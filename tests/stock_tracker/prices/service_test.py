@@ -93,7 +93,7 @@ def concat_existing_and_new_dataframes(
     )
 
 
-def test_calculate_start_date_for_new_extract_to_check_it_returns_last_day_plus_one_as_string(
+def test_calculate_start_date_for_new_extract_to_check_it_returns_last_day_plus_one(
     existing_stock_data_with_existing_values,
 ):
     """
@@ -103,6 +103,17 @@ def test_calculate_start_date_for_new_extract_to_check_it_returns_last_day_plus_
         existing_stock_data_with_existing_values
     )
     assert latest_date_str == "2026-01-30"
+
+
+def test_calculate_start_date_for_new_extract_to_check_it_returns_last_day_plus_one_as_str(
+    existing_stock_data_with_existing_values,
+):
+    """
+    Test if last_date + 1 date is retruned as a string
+    """
+    latest_date_str = calculate_start_date_for_new_extract(
+        existing_stock_data_with_existing_values
+    )
     assert type(latest_date_str) is str
 
 
