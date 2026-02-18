@@ -10,3 +10,4 @@ data/
 htmlcov/
 coverage.xml
 .coverage
+.github/
