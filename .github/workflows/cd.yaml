@@ -1,0 +1,26 @@
+name: CD (Simulated)
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Simulate deployment
+        run: |
+          echo "Deploying to production..."
+          echo "Building application..."
+          echo "Deployment successful!"
+          echo "App is live at: https://fake-url.com"
+          
+      - name: Show deployment info
+        run: |
+          echo "Deployed version: ${{ github.sha }}"
+          echo "Deployed by: ${{ github.actor }}"
+          echo "Deployed at: $(date)"
