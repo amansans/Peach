@@ -1,14 +1,13 @@
 from typing import Dict, List, Callable
+from stock_tracker.config import settings
 import logging
 import pandas as pd
 import requests
 
-from stock_tracker.config import INDEX_URLS, HEADERS
-
 
 def fetch_index_tickers(
-    urls: Dict[str, str] = INDEX_URLS,
-    headers: Dict[str, str] = HEADERS,
+    urls: Dict[str, str] = settings.INDEX_URLS,
+    headers: Dict[str, str] = settings.HEADERS,
     http_get: Callable = requests.get,
 ) -> List[str]:
     """Fetch tickers from configured index Wikipedia pages."""

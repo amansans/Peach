@@ -1,4 +1,4 @@
-from stock_tracker.config import TICKER_FILE, PRICE_DIR
+from stock_tracker.config import settings
 from stock_tracker.prices.fetch import fetch_stock_data
 from stock_tracker.utils.date_util import today_str
 from stock_tracker.prices.storage import store_updated_prices, load_price_parquet_file
@@ -11,7 +11,7 @@ import pandas as pd
 
 def load_tickers() -> pd.Series:
     """Load ticker symbols from Excel file."""
-    df = pd.read_excel(TICKER_FILE)
+    df = pd.read_excel(settings.TICKER_FILE)
     return df["Symbol"].dropna().unique()
 
 
