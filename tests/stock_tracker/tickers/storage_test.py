@@ -1,11 +1,12 @@
 from stock_tracker.tickers.storage import load_existing_tickers, save_tickers
-from stock_tracker import config
+from stock_tracker.config.settings import settings
 import pandas as pd
 
 
 def test_load_existing_tickers_when_file_does_not_exist(tmp_path, monkeypatch):
     fake_file = tmp_path / "tickers.xlsx"
-    monkeypatch.setattr(config, "TICKER_FILE", fake_file)
+
+    monkeypatch.setattr("stock_tracker.config.settings.TICKER_FILE", fake_file)
 
     df = load_existing_tickers(fake_file)
 
