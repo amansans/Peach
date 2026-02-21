@@ -1,4 +1,5 @@
 import logging
+from stock_tracker.config.settings import settings
 
 
 def setup_logging(level=logging.INFO) -> None:
