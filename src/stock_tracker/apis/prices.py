@@ -1,14 +1,15 @@
 from fastapi import APIRouter, HTTPException
 from stock_tracker.prices.fetch import fetch_stock_data
 from stock_tracker.prices.service import update_single_ticker
-from stock_tracker.prices.storage import load_price_parquet_file
+from stock_tracker.prices.storage import FilePriceStorage
 
 router = APIRouter()
 
 
 @router.get("/{ticker}")
 def get_prices(ticker: str):
-    df = load_price_parquet_file(ticker)
+    storage = FilePriceStorage()
+    df = storage.load_price_parquet_file(ticker)
     return df.to_dict(orient="records")
 
 

@@ -1,4 +1,4 @@
-from stock_tracker.tickers.storage import load_existing_tickers
+from stock_tracker.tickers.storage import FileTickerStorage
 from unittest.mock import patch
 import pandas as pd
 import pytest
@@ -15,7 +15,9 @@ def returnHTTPException():
 
 
 def test_get_tickers(client, mock_tickers):
-    with patch("stock_tracker.apis.ticker.load_existing_tickers") as mock_ticker_list:
+    with patch(
+        "stock_tracker.apis.ticker.FileTickerStorage.load_existing_tickers"
+    ) as mock_ticker_list:
         mock_ticker_list.return_value = mock_tickers
 
         r = client.get("/tickers")

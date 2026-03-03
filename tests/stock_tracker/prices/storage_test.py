@@ -1,4 +1,4 @@
-from stock_tracker.prices.storage import store_updated_prices, load_price_parquet_file
+from stock_tracker.prices.storage import FilePriceStorage
 from unittest.mock import patch
 from stock_tracker.config.settings import settings
 import pandas as pd
@@ -32,7 +32,8 @@ def test_saving_parquet_files_for_a_ticker(tmp_path, monkeypatch, valid_stock_da
     mock_ticker = "TEST"
     monkeypatch.setattr(settings, "PRICE_DIR", tmp_path)
 
-    store_updated_prices(valid_stock_data, mock_ticker)
-    loaded_df = load_price_parquet_file(mock_ticker)
+    storage = FilePriceStorage()
+    storage.store_updated_prices(valid_stock_data, mock_ticker)
+    loaded_df = storage.load_price_parquet_file(mock_ticker)
 
     assert valid_stock_data.equals(loaded_df)

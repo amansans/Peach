@@ -125,11 +125,11 @@ def test_add_data_to_ticker_with_no_existing_values(
     Test if data is being added correctly to a ticker with no values
     """
     with patch(
-        "stock_tracker.prices.service.load_price_parquet_file"
+        "stock_tracker.prices.service.FilePriceStorage.load_price_parquet_file"
     ) as mock_load, patch(
         "stock_tracker.prices.service.fetch_stock_data"
     ) as mock_fetch, patch(
-        "stock_tracker.prices.service.store_updated_prices"
+        "stock_tracker.prices.service.FilePriceStorage.store_updated_prices"
     ) as mock_store:
 
         mock_load.return_value = existing_stock_data_with_no_values
@@ -157,11 +157,11 @@ def test_add_data_to_ticker_with_existing_values(
     Test if data is being added correctly to a ticker with existing values
     """
     with patch(
-        "stock_tracker.prices.service.load_price_parquet_file"
+        "stock_tracker.prices.service.FilePriceStorage.load_price_parquet_file"
     ) as mock_load, patch(
         "stock_tracker.prices.service.fetch_stock_data"
     ) as mock_fetch, patch(
-        "stock_tracker.prices.service.store_updated_prices"
+        "stock_tracker.prices.service.FilePriceStorage.store_updated_prices"
     ) as mock_store, patch(
         "stock_tracker.prices.service.today_str",
         return_value="2026-02-16",
