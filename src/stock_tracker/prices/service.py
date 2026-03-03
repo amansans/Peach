@@ -1,10 +1,8 @@
 from stock_tracker.config import settings
 from stock_tracker.prices.fetch import fetch_stock_data
 from stock_tracker.utils.date_util import today_str
-from stock_tracker.prices.storage import store_updated_prices, load_price_parquet_file
-
+from stock_tracker.prices.storage import FilePriceStorage
 from datetime import timedelta
-from typing import List
 import logging
 import pandas as pd
 
@@ -31,7 +29,8 @@ def update_single_ticker(ticker: str) -> None:
     """
     Update price data for a single ticker.
     """
-    existing_df = load_price_parquet_file(ticker)
+    storage = FilePriceStorage()
+    existing_df = storage.load_price_parquet_file(ticker)
 
     if not existing_df.empty:
         last_date_str = calculate_start_date_for_new_extract(existing_df)
@@ -55,7 +54,8 @@ def update_single_ticker(ticker: str) -> None:
     # Clean and store
     new_df = new_df[~new_df.index.duplicated(keep="last")]
     new_df.sort_index(inplace=True)
-    store_updated_prices(new_df, ticker)
+    storage = FilePriceStorage()
+    storage.store_updated_prices(new_df, ticker)
 
 
 def update_all_tickers() -> None:

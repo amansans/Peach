@@ -5,7 +5,9 @@ import pandas as pd
 def test_get_prices(client):
     fake_df = pd.DataFrame({"Close": [100, 101]})
 
-    with patch("stock_tracker.apis.prices.load_price_parquet_file") as mock_load:
+    with patch(
+        "stock_tracker.apis.prices.FilePriceStorage.load_price_parquet_file"
+    ) as mock_load:
         mock_load.return_value = fake_df
 
         r = client.get("/prices/AAPL")

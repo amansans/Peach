@@ -1,5 +1,5 @@
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Your existing base dir logic (keep this)
 BASE_DIR = Path(__file__).resolve().parents[3]
@@ -29,8 +29,8 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "Stock Tracker"
 
-    class Config:
-        env_file = ".env"
+    class Settings(BaseSettings):
+        model_config = SettingsConfigDict(env_file=".env")
 
 
 settings = Settings()
@@ -38,5 +38,3 @@ settings = Settings()
 PRICE_DIR = settings.PRICE_DIR
 TICKER_FILE = settings.TICKER_FILE
 DATA_DIR = settings.DATA_DIR
-
-print(BASE_DIR)

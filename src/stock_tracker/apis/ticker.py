@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from stock_tracker.tickers.service import update_ticker_list
-from stock_tracker.tickers.storage import load_existing_tickers
+from stock_tracker.tickers.storage import FileTickerStorage
 from stock_tracker.config.settings import settings
 
 router = APIRouter()
@@ -8,7 +8,8 @@ router = APIRouter()
 
 @router.get("/")
 def get_tickers():
-    df = load_existing_tickers(settings.TICKER_FILE)
+    storage = FileTickerStorage()
+    df = storage.load_existing_tickers()
     return {"tickers": df["Symbol"].tolist()}
 
 

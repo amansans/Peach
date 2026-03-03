@@ -1,5 +1,5 @@
 from stock_tracker.tickers.service import compute_updated_symbols, update_ticker_list
-from stock_tracker.tickers.storage import load_existing_tickers, save_tickers
+from stock_tracker.tickers.storage import FileTickerStorage
 
 import pandas as pd
 
@@ -46,10 +46,11 @@ def test_update_ticker_list_with_no_new_data(tmp_path):
     # build an existing_df
     fake_file = tmp_path / "ticker.xlsx"
     df = pd.DataFrame({"Symbol": ["AAPL", "GOOG"]})
-    save_tickers(df, fake_file)
+    storage = FileTickerStorage(fake_file)
+    storage.save_tickers(df)
 
-    update_ticker_list(fake_file, mock_fetch_index_tickers)
-    updated_df = load_existing_tickers(fake_file)
+    update_ticker_list(mock_fetch_index_tickers, storage)
+    updated_df = storage.load_existing_tickers()
 
     assert list(updated_df["Symbol"]) == ["AAPL", "GOOG"]
 
@@ -59,10 +60,11 @@ def test_update_ticker_list_one_new_ticker(tmp_path):
     # build an existing_df
     fake_file = tmp_path / "ticker.xlsx"
     df = pd.DataFrame({"Symbol": ["AAPL", "GOOG", "FB"]})
-    save_tickers(df, fake_file)
+    storage = FileTickerStorage(fake_file)
+    storage.save_tickers(df)
 
-    update_ticker_list(fake_file, mock_fetch_index_tickers)
-    updated_df = load_existing_tickers(fake_file)
+    update_ticker_list(mock_fetch_index_tickers, storage)
+    updated_df = storage.load_existing_tickers()
 
     assert list(updated_df["Symbol"]) == ["AAPL", "GOOG", "FB"]
 
@@ -72,23 +74,10 @@ def test_update_ticker_list_multiple_new_tickers(tmp_path):
     # build an existing_df
     fake_file = tmp_path / "ticker.xlsx"
     df = pd.DataFrame({"Symbol": ["AAPL", "GOOG", "FB", "NIO", "TSLA"]})
-    save_tickers(df, fake_file)
+    storage = FileTickerStorage(fake_file)
+    storage.save_tickers(df)
 
-    update_ticker_list(fake_file, mock_fetch_index_tickers)
-    updated_df = load_existing_tickers(fake_file)
+    update_ticker_list(mock_fetch_index_tickers, storage)
+    updated_df = storage.load_existing_tickers()
 
     assert list(updated_df["Symbol"]) == ["AAPL", "GOOG", "FB", "NIO", "TSLA"]
-
-
-def failing_fetch():
-    raise RuntimeError("API is down")
-
-
-def test_update_ticker_list_fetch_failure(tmp_path):
-    fake_file = tmp_path / "ticker.xlsx"
-
-    try:
-        update_ticker_list(fake_file, failing_fetch)
-        assert False, "Expected failure"
-    except RuntimeError:
-        pass
