@@ -1,5 +1,5 @@
 from stock_tracker.tickers.storage import FileTickerStorage
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import pandas as pd
 import pytest
 
@@ -15,11 +15,14 @@ def returnHTTPException():
 
 
 def test_get_tickers(client, mock_tickers):
-    with patch(
-        "stock_tracker.apis.ticker.FileTickerStorage.load_existing_tickers"
-    ) as mock_ticker_list:
-        mock_ticker_list.return_value = mock_tickers
 
+    mock_storage = MagicMock()
+    mock_storage.load_existing_tickers.return_value = mock_tickers
+
+    with patch(
+        "stock_tracker.apis.ticker.get_ticker_storage",
+        return_value=mock_storage,
+    ):
         r = client.get("/tickers")
 
         assert r.status_code == 200

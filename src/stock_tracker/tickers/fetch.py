@@ -24,8 +24,9 @@ def fetch_index_tickers(
         if index_name == "S&P 500":
             symbols = tables[0]["Symbol"]
 
-        elif index_name == "Dow Jones":
-            symbols = tables[2]["Symbol"]
+        # Some issue with the extract here. Perhaps HTML got updated
+        # elif index_name == "Dow Jones":
+        #     symbols = tables[2]["Symbol"]
 
         elif index_name == "Nasdaq 100":
             symbols = tables[4]["Ticker"]

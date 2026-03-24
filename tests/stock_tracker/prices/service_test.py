@@ -4,7 +4,7 @@ from stock_tracker.prices.service import (
     calculate_start_date_for_new_extract,
 )
 import pandas as pd
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from datetime import datetime
 import pytest
 
@@ -124,26 +124,20 @@ def test_add_data_to_ticker_with_no_existing_values(
     """
     Test if data is being added correctly to a ticker with no values
     """
-    with patch(
-        "stock_tracker.prices.service.FilePriceStorage.load_price_parquet_file"
-    ) as mock_load, patch(
-        "stock_tracker.prices.service.fetch_stock_data"
-    ) as mock_fetch, patch(
-        "stock_tracker.prices.service.FilePriceStorage.store_updated_prices"
-    ) as mock_store:
+    storage = MagicMock()
 
-        mock_load.return_value = existing_stock_data_with_no_values
+    storage.load_price_parquet_file.return_value = existing_stock_data_with_no_values
+
+    with patch("stock_tracker.prices.service.fetch_stock_data") as mock_fetch:
+
         mock_fetch.return_value = new_stock_data_extract_from_yfiance
 
-        update_single_ticker("TEST")
-
-        mock_load.assert_called_once_with("TEST")
-
+        update_single_ticker("TEST", storage=storage)
+        storage.load_price_parquet_file.assert_called_once_with("TEST")
         mock_fetch.assert_called_once_with("TEST")
+        storage.store_updated_prices.assert_called_once()
 
-        mock_store.assert_called_once()
-
-        stored_df = mock_store.call_args[0][0]
+        stored_df = storage.store_updated_prices.call_args[0][0]
 
         assert stored_df.equals(new_stock_data_extract_from_yfiance)
 
@@ -153,31 +147,28 @@ def test_add_data_to_ticker_with_existing_values(
     new_stock_data_extract_from_yfiance,
     concat_existing_and_new_dataframes,
 ):
-    """
-    Test if data is being added correctly to a ticker with existing values
-    """
-    with patch(
-        "stock_tracker.prices.service.FilePriceStorage.load_price_parquet_file"
-    ) as mock_load, patch(
-        "stock_tracker.prices.service.fetch_stock_data"
-    ) as mock_fetch, patch(
-        "stock_tracker.prices.service.FilePriceStorage.store_updated_prices"
-    ) as mock_store, patch(
+
+    storage = MagicMock()
+
+    storage.load_price_parquet_file.return_value = (
+        existing_stock_data_with_existing_values
+    )
+
+    with patch("stock_tracker.prices.service.fetch_stock_data") as mock_fetch, patch(
         "stock_tracker.prices.service.today_str",
         return_value="2026-02-16",
     ):
 
-        mock_load.return_value = existing_stock_data_with_existing_values
         mock_fetch.return_value = new_stock_data_extract_from_yfiance
 
-        update_single_ticker("TEST")
+        update_single_ticker("TEST", storage)
 
-        mock_load.assert_called_once_with("TEST")
+        storage.load_price_parquet_file.assert_called_once_with("TEST")
         mock_fetch.assert_called_once_with("TEST", start_date="2026-01-30")
-        mock_store.assert_called_once()
+        storage.store_updated_prices.assert_called_once()
 
-        stored_df = mock_store.call_args[0][0]
-        ticker_arg = mock_store.call_args[0][1]
+        stored_df = storage.store_updated_prices.call_args[0][0]
+        ticker_arg = storage.store_updated_prices.call_args[0][1]
 
         assert stored_df.equals(concat_existing_and_new_dataframes)
         assert ticker_arg == "TEST"

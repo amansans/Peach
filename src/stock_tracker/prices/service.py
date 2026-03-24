@@ -1,15 +1,20 @@
 from stock_tracker.config import settings
+from pathlib import Path
 from stock_tracker.prices.fetch import fetch_stock_data
 from stock_tracker.utils.date_util import today_str
 from stock_tracker.prices.storage import FilePriceStorage
+from stock_tracker.prices.storage_base import PriceStorage
 from datetime import timedelta
 import logging
 import pandas as pd
 
 
-def load_tickers() -> pd.Series:
+# To be updated
+# This logic does not belong here and should be included in storage Module for Tickers
+def load_tickers(ticker_path: Path | None = None) -> pd.Series:
     """Load ticker symbols from Excel file."""
-    df = pd.read_excel(settings.TICKER_FILE)
+    if ticker_path is None:
+        df = pd.read_excel(settings.TICKER_FILE)
     return df["Symbol"].dropna().unique()
 
 
@@ -25,11 +30,10 @@ def calculate_start_date_for_new_extract(df: pd.DataFrame) -> str:
     return last_date_str
 
 
-def update_single_ticker(ticker: str) -> None:
+def update_single_ticker(ticker: str, storage: PriceStorage) -> None:
     """
     Update price data for a single ticker.
     """
-    storage = FilePriceStorage()
     existing_df = storage.load_price_parquet_file(ticker)
 
     if not existing_df.empty:
@@ -54,11 +58,10 @@ def update_single_ticker(ticker: str) -> None:
     # Clean and store
     new_df = new_df[~new_df.index.duplicated(keep="last")]
     new_df.sort_index(inplace=True)
-    storage = FilePriceStorage()
     storage.store_updated_prices(new_df, ticker)
 
 
-def update_all_tickers() -> None:
+def update_all_tickers(storage: PriceStorage) -> None:
     """
     Update all tickers listed in the Excel file.
     """
@@ -66,6 +69,6 @@ def update_all_tickers() -> None:
 
     for ticker in tickers:
         try:
-            update_single_ticker(ticker)
+            update_single_ticker(ticker, storage)
         except Exception as exc:
             logging.error("Error updating %s: %s", ticker, exc)

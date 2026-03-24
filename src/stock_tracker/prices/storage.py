@@ -1,10 +1,11 @@
+from stock_tracker.prices.storage_base import PriceStorage
 from stock_tracker.config import settings
 from pathlib import Path
 import logging
 import pandas as pd
 
 
-class FilePriceStorage:
+class FilePriceStorage(PriceStorage):
     def __init__(self, price_dir: Path | None = None):
         self.price_dir = price_dir or settings.PRICE_DIR
 

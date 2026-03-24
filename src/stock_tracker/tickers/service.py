@@ -5,6 +5,7 @@ import pandas as pd
 
 from stock_tracker.tickers.fetch import fetch_index_tickers
 from stock_tracker.tickers.storage import FileTickerStorage
+from stock_tracker.tickers.storage_base import TickerStorage
 
 
 def compute_updated_symbols(
@@ -25,7 +26,7 @@ def compute_updated_symbols(
 
 def update_ticker_list(
     fetch_func: Callable[[], List[str]] = fetch_index_tickers,
-    storage: FileTickerStorage | None = None,
+    storage: TickerStorage | None = None,
 ) -> None:
     """Compare new index tickers with stored tickers and update file."""
 
@@ -50,6 +51,5 @@ def update_ticker_list(
     else:
         updated_tickers = list(updated_symbols)
 
-    storage = FileTickerStorage()
     updated_df = pd.DataFrame({"Symbol": sorted(updated_tickers)})
     storage.save_tickers(updated_df)

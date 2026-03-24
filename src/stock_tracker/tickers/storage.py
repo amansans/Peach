@@ -1,11 +1,12 @@
 from stock_tracker.utils.file_util import create_ticker_file
 from stock_tracker.config.settings import settings
+from stock_tracker.tickers.storage_base import TickerStorage
 from pathlib import Path
 import logging
 import pandas as pd
 
 
-class FileTickerStorage:
+class FileTickerStorage(TickerStorage):
     def __init__(self, ticker_file: Path | None = None):
         # Default to your existing config path
         self.ticker_file = ticker_file or settings.TICKER_FILE
