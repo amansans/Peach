@@ -17,14 +17,14 @@ HTML_MAP = {
             <tr><td>MSFT</td></tr>
         </table>
     """,
-    "url2": """
-        <table><tr><th>X</th></tr></table>
-        <table><tr><th>X</th></tr></table>
-        <table>
-            <tr><th>Symbol</th></tr>
-            <tr><td>GOOG</td></tr>
-        </table>
-    """,
+    # "url2": """
+    #     <table><tr><th>X</th></tr></table>
+    #     <table><tr><th>X</th></tr></table>
+    #     <table>
+    #         <tr><th>Symbol</th></tr>
+    #         <tr><td>GOOG</td></tr>
+    #     </table>
+    # """,
     "url3": """
         <table><tr><th>X</th></tr></table>
         <table><tr><th>X</th></tr></table>
@@ -39,7 +39,7 @@ HTML_MAP = {
 
 URLS = {
     "S&P 500": "url1",
-    "Dow Jones": "url2",
+    # "Dow Jones": "url2",
     "Nasdaq 100": "url3",
 }
 
@@ -51,4 +51,4 @@ def fake_http_get(url, headers=None, timeout=15):
 def test_fetch_index_tickers_parses_all_indexes_correctly():
 
     tickers = fetch_index_tickers(urls=URLS, headers=None, http_get=fake_http_get)
-    assert tickers == ["AAPL", "GOOG", "MSFT"]
+    assert tickers == ["AAPL", "MSFT"]

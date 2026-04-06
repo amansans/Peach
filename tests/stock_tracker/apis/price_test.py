@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import pandas as pd
 
 
@@ -17,8 +17,14 @@ def test_get_prices(client):
 
 
 def test_update_prices(client):
-    with patch("stock_tracker.apis.prices.update_single_ticker") as mock_update:
+    with patch("stock_tracker.apis.prices.update_single_ticker") as mock_update, patch(
+        "stock_tracker.apis.prices.get_price_factory"
+    ) as mock_factory:
+
+        mock_storage = MagicMock()
+        mock_factory.return_value = mock_storage
+
         r = client.post("/prices/AAPL/update")
 
         assert r.status_code == 200
-        mock_update.assert_called_once_with("AAPL")
+        mock_update.assert_called_once_with("AAPL", mock_storage)
