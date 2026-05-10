@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------------------
+# Pre-commit configuration for Peach.
+#
+# Install once per clone:
+#     uv run pre-commit install
+#
+# After that, every `git commit` triggers these hooks on the staged files.
+# Hooks must pass before the commit is recorded; if a hook fixes the file
+# (e.g. ruff format), the commit is rejected and you re-stage + retry.
+#
+# Why each hook is here is documented inline.
+# ---------------------------------------------------------------------------
+repos:
+  # ---- General hygiene hooks (the pre-commit project's own basics) ---------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      # Strip trailing whitespace — keeps diffs clean.
+      - id: trailing-whitespace
+      # Ensure files end with a single newline (POSIX text-file convention).
+      - id: end-of-file-fixer
+      # Refuse to commit a file > 1 MB unless explicitly --no-verify'd.
+      # Large binary blobs in git are a long-term regret.
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      # Validate YAML/JSON/TOML syntax so config bugs don't reach main.
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      # Don't allow accidentally-committed merge conflict markers.
+      - id: check-merge-conflict
+      # Catch the most common secrets-shape mistakes (private keys, AWS IDs).
+      - id: detect-private-key
+
+  # ---- ruff: lint + format (replaces black + isort + flake8) ---------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # ---- mypy: static type check on the peach package ------------------------
+  # We run mypy via uv so it picks up our virtualenv and project dependency
+  # stubs.  Alembic migrations are excluded in pyproject.toml.
+  - repo: local
+    hooks:
+      - id: mypy-strict
+        name: mypy --strict (peach)
+        entry: uv run mypy peach
+        language: system
+        pass_filenames: false
+        types: [python]
+
+  # ---- detect-secrets: catch high-entropy strings + known secret patterns --
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]

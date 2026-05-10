@@ -1,0 +1,88 @@
+# ---------------------------------------------------------------------------
+# Peach — local development services.
+#
+# Run with:
+#     docker compose up -d           # background
+#     make db.up                     # equivalent shortcut
+#
+# Two services:
+#   * postgres — Postgres 16 (matches what Lightsail / Oracle Always-Free
+#     would run in production).  Data is persisted in a *named volume*
+#     (`peach_pg_data`) rather than a bind-mount; named volumes are owned by
+#     Docker and survive `docker compose down` without polluting the repo
+#     directory.  Use `docker compose down -v` to wipe the database.
+#
+#   * pgadmin — optional web UI at http://localhost:5050.  Pre-configured
+#     with a server definition pointing at the `postgres` service so login is
+#     instant.  Not started by default in CI; it's a dev convenience.
+#
+# Why pin specific image tags?  Reproducibility.  Upgrading Postgres is a
+# deliberate, opt-in action, not something that happens silently when the
+# `latest` tag floats.
+# ---------------------------------------------------------------------------
+services:
+  postgres:
+    # Postgres 16 is the most recent LTS-ish line.  Stick to a major
+    # version; upgrade by editing this and running a manual `pg_dump` /
+    # restore — never trust automatic in-place upgrades.
+    image: postgres:16.3
+    container_name: peach-postgres
+    restart: unless-stopped
+    environment:
+      # These credentials are intentionally weak — they are *local only*.
+      # The `.env` file overrides DATABASE_URL for the application, so even
+      # if a developer accidentally exposed this port, no production data
+      # is at risk.  Cloud deployments use a separate, strong credential.
+      POSTGRES_USER: peach
+      POSTGRES_PASSWORD: peach
+      POSTGRES_DB: peach
+    ports:
+      # Bind to 127.0.0.1 explicitly so the database isn't reachable from
+      # other hosts on the developer's LAN.  This is a minor hardening
+      # against an over-permissive home network.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - peach_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` exits 0 when Postgres is accepting connections.
+      # The `start_period` gives Postgres time to initialise on first boot
+      # (extracting the data dir, etc.) before failed health checks count
+      # toward the unhealthy threshold.
+      test: ["CMD-SHELL", "pg_isready -U peach -d peach"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  pgadmin:
+    # pgadmin 4 — web-based Postgres admin.  Optional but useful for ad-hoc
+    # schema inspection during Phase 0/1.  Disable by commenting this whole
+    # service out if you don't want the extra ~200 MB image on your machine.
+    image: dpage/pgadmin4:8.9
+    container_name: peach-pgadmin
+    restart: unless-stopped
+    environment:
+      # Default login on first start.  Change after first boot via the UI.
+      PGADMIN_DEFAULT_EMAIL: admin@peach.local
+      PGADMIN_DEFAULT_PASSWORD: peach
+      # Disable the "master password" prompt that pgadmin shows for saved
+      # server credentials — unnecessary friction for a single-developer
+      # local setup.
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "127.0.0.1:5050:80"
+    depends_on:
+      postgres:
+        # Wait until the postgres healthcheck reports healthy before
+        # starting pgadmin.  Avoids the first-launch flake where pgadmin
+        # tries to register the server before postgres is listening.
+        condition: service_healthy
+    volumes:
+      - peach_pgadmin_data:/var/lib/pgadmin
+
+# Named volumes — managed by Docker.  Inspecting / wiping:
+#   docker volume ls
+#   docker volume rm peach_peach_pg_data peach_peach_pgadmin_data
+volumes:
+  peach_pg_data:
+  peach_pgadmin_data:
