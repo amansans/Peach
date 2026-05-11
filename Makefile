@@ -102,6 +102,17 @@ create-user: ## Create an admin user — pass username= and email=
 	uv run python -m scripts.create_user --username "$(username)" --email "$(email)"
 
 # ===========================================================================
+# Ingestion (Phase 1)
+# ===========================================================================
+
+backfill: ## Backfill OHLCV history.  Pass years=5 (default) or only-symbol=AAPL.
+	uv run python -m scripts.backfill_prices --years $(or $(years),5) \
+		$(if $(only-symbol),--only-symbol $(only-symbol),)
+
+daily-eod: ## Run the daily EOD pipeline (membership refresh + price update)
+	uv run python -m peach.scheduling.daily_eod $(if $(backfill-days),--backfill-days $(backfill-days),)
+
+# ===========================================================================
 # Housekeeping
 # ===========================================================================
 

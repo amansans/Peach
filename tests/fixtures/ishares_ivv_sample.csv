@@ -1,0 +1,10 @@
+"iShares Core S&P 500 ETF"
+"Fund Holdings as of","08/May/2026"
+"Inception Date","15/May/2000"
+"Shares Outstanding","876,000,000"
+
+"Ticker","Name","Sector","Asset Class","Market Value","Weight (%)","Notional Value","Quantity","Price","Location","Exchange","Currency","FX Rate","Market Currency","Accrual Date"
+"AAPL","APPLE INC","Information Technology","Equity","$45,123,456,789.12","6.85","45123456789.12","158234567","285.18","United States","NASDAQ","USD","1.00","USD","-"
+"MSFT","MICROSOFT CORP","Information Technology","Equity","$40,987,654,321.45","6.22","40987654321.45","98765432","415.05","United States","NASDAQ","USD","1.00","USD","-"
+"NVDA","NVIDIA CORP","Information Technology","Equity","$38,765,432,109.87","5.88","38765432109.87","312345678","124.10","United States","NASDAQ","USD","1.00","USD","-"
+"USD","UNITED STATES DOLLAR","Cash and/or Derivatives","Cash","$12,345,678.00","0.00","12345678.00","12345678","1.00","United States","-","USD","1.00","USD","-"

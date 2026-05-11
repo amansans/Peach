@@ -68,6 +68,28 @@ dependencies = [
     # structlog produces JSON log lines so they're trivially grep-able and
     # shippable to a log aggregator later if we ever need one.
     "structlog>=24.2.0",
+
+    # --- HTTP + retries (Phase 1 onwards) -------------------------------------
+    # httpx is the modern requests-replacement: async-capable, supports
+    # HTTP/2, has a sane timeout API, and ships type hints.
+    "httpx>=0.27.0",
+    # tenacity wraps every outbound network call with retry+backoff so a
+    # transient blip during a 530-ticker ingest doesn't abort the run.
+    "tenacity>=8.3.0",
+
+    # --- HTML / data parsing (Phase 1) ----------------------------------------
+    # BeautifulSoup + lxml parse Wikipedia constituent tables.  pandas
+    # is used by both the issuer-CSV loader and Stooq's price CSV parser;
+    # it'll be heavily used from Phase 2 (indicators) onwards as well.
+    "beautifulsoup4>=4.12.3",
+    "lxml>=5.2.0",
+    "pandas>=2.2.0",
+
+    # --- yfinance fallback (Phase 1) ------------------------------------------
+    # Used ONLY as a gap-fill source when Stooq returns no data for a
+    # ticker.  Stooq is the primary; the plan rejects yfinance fundamentals
+    # outright and treats yfinance prices as best-effort.
+    "yfinance>=0.2.40",
 ]
 
 # ---------------------------------------------------------------------------

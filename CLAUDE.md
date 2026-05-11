@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project context
 
-Peach is a multi-layer stock screening platform for the SP500 + Nasdaq-100 + Dow Jones universe (~530 tickers). The architectural plan — including phased build order, design rationale, indicator inventory, and hosting tiers — lives at `/root/.claude/plans/do-not-use-the-happy-dongarra.md`. **Read that plan before making non-trivial changes.** Status: Phase 0 complete (skeleton + reference schema). Phases 1–13 are still ahead.
+Peach is a multi-layer stock screening platform for the SP500 + Nasdaq-100 + Dow Jones universe (~530 tickers). The architectural plan — including phased build order, design rationale, indicator inventory, and hosting tiers — lives at `/root/.claude/plans/do-not-use-the-happy-dongarra.md`. **Read that plan before making non-trivial changes.**
+
+**Status:**
+- **Phase 0 complete** — skeleton, reference schema, bootstrap scripts.
+- **Phase 1 complete** — point-in-time `index_memberships`, `ohlcv_daily` (composite PK + BRIN), `corporate_actions`; Stooq + yfinance OHLCV ingestion; Wikipedia + issuer-CSV membership scraping; daily-EOD orchestrator and 5-year backfill script.
+- Phases 2–13 are still ahead.
 
 ## Common commands
 
@@ -16,6 +21,8 @@ make db.up                                 # start local postgres + pgadmin
 make migrate                               # alembic upgrade head
 make seed                                  # populate exchanges + GICS sectors + indices (idempotent)
 make create-user username=admin email=a@b.com    # bcrypt-hash + insert/update user (prompts for password)
+make daily-eod                             # phase 1: refresh memberships + ingest recent prices
+make backfill years=5                      # phase 1: pull 5y OHLCV history for current constituents
 
 make fmt                                   # ruff format
 make lint                                  # ruff check --fix
@@ -48,6 +55,22 @@ Migrations: edit ORM models in `peach/db/models/`, then `make migrate-create msg
 **Multi-user (2–5 trusted users) with shared data.** Auth is gatekeeping, not per-user data scoping. Rule sets, screener runs, agent verdicts are global. `triggered_by_user_id` columns on expensive runs (backtests, agent verdicts) track attribution but don't filter visibility.
 
 **Anthropic models (Phase 11):** default `claude-sonnet-4-6` for routine verdicts; reserve `claude-opus-4-7` for explicit deep-dive requests. Use prompt caching on system prompt + tool descriptions.
+
+## Ingestion architecture (Phase 1)
+
+**Parser / writer split is load-bearing.** Source modules under `peach/ingestion/sources/` are pure parsers — they fetch data via `peach.ingestion.http` and emit typed `ParsedOHLCV` / `ParsedMembership` / `ParsedCorporateAction` dataclasses from `peach.ingestion.base`. The DB is touched only by `peach/ingestion/writers.py`. This makes parsers unit-testable with committed fixtures (`tests/fixtures/`) and lets the orchestrator compose multiple sources without each carrying a DB opinion.
+
+**The orchestrator owns source-priority policy.** `peach.ingestion.orchestrator` decides Stooq-first-then-yfinance for prices, and issuer-CSV-first-then-Wikipedia for membership. Source modules don't know about each other.
+
+**Writers are idempotent.** `upsert_ohlcv_rows` uses `INSERT ... ON CONFLICT (ticker_id, bar_date) DO UPDATE` so re-running an ingest is safe. `sync_current_memberships` reconciles a fresh constituent list against open-ended membership periods: ticker in old∩new → no-op; ticker only in new → insert open-ended period; ticker only in old → close existing period at today. Never rewrite a `valid_from` — that destroys history.
+
+**Stooq's `close` doubles as `adj_close` in Phase 1.** Stooq is split-adjusted but not dividend-adjusted. Phase 5 EDGAR ingestion will recompute true dividend-adjusted closes from `corporate_actions`. yfinance fallback writes its true `Adj Close` directly.
+
+**Network-fetching functions get `@network_retry`** from `peach.ingestion.base`. Source-level code catches `httpx.HTTPError` and re-raises as `NetworkError` so the tenacity-driven retry sees a uniform signal. 4xx responses do NOT retry (a 404 is "wrong URL", not "flaky server").
+
+**Source attribution is queryable.** Every OHLCV row and membership row carries a `source` column with stable string values (`stooq`, `yfinance_gapfill`, `wikipedia`, `ishares_ivv`, `invesco_qqq`, `ishares_dia`). `SELECT source, count(*) FROM ohlcv_daily GROUP BY source` audits provenance at any time.
+
+**Deferred to its own one-shot scraper**: Wikipedia *revision-history* parsing for SP500/DJI deep history. The current Wikipedia source reads only the live constituent table. The schema (`valid_from`/`valid_to`) is forward-compatible — historical rows can be backfilled later without rework.
 
 ## Coding conventions (these are non-default)
 
