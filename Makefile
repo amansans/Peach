@@ -98,6 +98,9 @@ migrate-create: ## Create a new auto-generated migration; pass msg="..."
 seed: ## Seed reference tables (exchanges, GICS sectors, indices)
 	uv run python -m scripts.bootstrap_universe
 
+seed-indicators: ## Phase 2: seed indicators_catalog from the in-code registry
+	uv run python -m scripts.seed_indicators
+
 create-user: ## Create an admin user — pass username= and email=
 	uv run python -m scripts.create_user --username "$(username)" --email "$(email)"
 

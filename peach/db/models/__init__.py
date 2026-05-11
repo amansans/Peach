@@ -13,6 +13,7 @@ imported will silently be invisible to migrations.
 """
 
 from peach.db.models.auth import User
+from peach.db.models.indicators import IndicatorCatalog, IndicatorSnapshot
 from peach.db.models.membership import IndexMembership
 from peach.db.models.prices import CorporateAction, OHLCVDaily
 from peach.db.models.reference import (
@@ -28,6 +29,8 @@ __all__: list[str] = [
     "Exchange",
     "Index",
     "IndexMembership",
+    "IndicatorCatalog",
+    "IndicatorSnapshot",
     "OHLCVDaily",
     "Sector",
     "Ticker",

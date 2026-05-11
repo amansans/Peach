@@ -38,6 +38,7 @@ import structlog
 import typer
 
 from peach.db.base import utcnow
+from peach.indicators.engine import run_for_all_tickers
 from peach.ingestion.orchestrator import (
     ingest_prices_for_tickers,
     refresh_index_memberships,
@@ -133,6 +134,13 @@ def main(
             n_rows=n_total_rows,
             n_zero_symbols=n_zero,
         )
+
+    # ---------- Step 3: indicator recompute --------------------------------
+    # Indicators are pure functions of OHLCV history, so we always
+    # recompute after step 2.  Per-ticker failures are absorbed by
+    # ``run_for_all_tickers`` so a single bad series doesn't abort.
+    n_indicator_rows = run_for_all_tickers()
+    log.info("daily_eod.indicators_done", n_rows=n_indicator_rows)
 
     # ---------- Exit code --------------------------------------------------
     # We exit non-zero only when *every* index's membership refresh failed.

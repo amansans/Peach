@@ -9,7 +9,8 @@ Peach is a multi-layer stock screening platform for the SP500 + Nasdaq-100 + Dow
 **Status:**
 - **Phase 0 complete** — skeleton, reference schema, bootstrap scripts.
 - **Phase 1 complete** — point-in-time `index_memberships`, `ohlcv_daily` (composite PK + BRIN), `corporate_actions`; Stooq + yfinance OHLCV ingestion; Wikipedia + issuer-CSV membership scraping; daily-EOD orchestrator and 5-year backfill script.
-- Phases 2–13 are still ahead.
+- **Phase 2 complete** — `indicators_catalog` + `indicator_snapshots` (composite PK + cross-section index); registry-driven indicator engine; all 15 plan-defined technicals (18 specs / 35 distinct codes: SMA-50/200 + golden-cross, EMA-12/26, MACD, ADX, RSI-14, Stochastic-14/3, ROC-12, OBV, Anchored VWAP from 52w low/high, A/D Line, Bollinger-20/2, ATR-14, Fibonacci-60, Pivot Points); indicators recompute wired into `daily_eod`.
+- Phases 3–13 are still ahead.
 
 ## Common commands
 
@@ -21,8 +22,9 @@ make db.up                                 # start local postgres + pgadmin
 make migrate                               # alembic upgrade head
 make seed                                  # populate exchanges + GICS sectors + indices (idempotent)
 make create-user username=admin email=a@b.com    # bcrypt-hash + insert/update user (prompts for password)
-make daily-eod                             # phase 1: refresh memberships + ingest recent prices
+make daily-eod                             # phase 1+2: refresh memberships + ingest prices + recompute indicators
 make backfill years=5                      # phase 1: pull 5y OHLCV history for current constituents
+make seed-indicators                       # phase 2: seed indicators_catalog from the in-code registry
 
 make fmt                                   # ruff format
 make lint                                  # ruff check --fix
@@ -71,6 +73,28 @@ Migrations: edit ORM models in `peach/db/models/`, then `make migrate-create msg
 **Source attribution is queryable.** Every OHLCV row and membership row carries a `source` column with stable string values (`stooq`, `yfinance_gapfill`, `wikipedia`, `ishares_ivv`, `invesco_qqq`, `ishares_dia`). `SELECT source, count(*) FROM ohlcv_daily GROUP BY source` audits provenance at any time.
 
 **Deferred to its own one-shot scraper**: Wikipedia *revision-history* parsing for SP500/DJI deep history. The current Wikipedia source reads only the live constituent table. The schema (`valid_from`/`valid_to`) is forward-compatible — historical rows can be backfilled later without rework.
+
+## Indicator architecture (Phase 2)
+
+**Registry-driven.** Every indicator implementation is a pure function decorated with `@indicator(...)` from `peach.indicators.registry`. Import-time side effects populate a module-level dict; the engine iterates it, and `scripts/seed_indicators.py` reads the same dict to reconcile `indicators_catalog`. There is no manual enumeration anywhere — adding a new indicator is a single file edit.
+
+**Spec count ≠ indicator count.** The plan promises 15 user-facing indicators; the registry holds 18 specs because SMA-50/SMA-200/cross_sma_50_200 are split into three decorators (and EMA-12/EMA-26 into two, and Anchored VWAP into low/high). The combined `produces` lists fan out into 35 distinct `indicator_code`s — the unit of storage in `indicator_snapshots`. The `test_every_registered_indicator_runs_on_synthetic_data` test pins both numbers.
+
+**Storage shape is long-form, one row per (ticker, bar, code).** Multi-component indicators (MACD: line/signal/hist; Bollinger: mid/upper/lower/width; ADX: adx/+DI/-DI; Stochastic: %K/%D; Fibonacci: 6 levels; Pivots: P/R1/R2/S1/S2) explode into one row each. The `indicators_catalog.family` column groups them for UI plotting; storage stays uniformly tabular for fast aggregates.
+
+**NaN warmup bars are not stored.** Indicators are undefined for their first N bars (SMA-200's first 199). The writer drops NaN rows before upsert — querying "missing values" is a left join from `ohlcv_daily`, not a NULL scan. This keeps the snapshot table compact.
+
+**Wilder's smoothing == `ewm(alpha=1/N, adjust=False)`.** Used by RSI, ADX, and ATR. Do NOT substitute `rolling(N).mean()` — the difference compounds and won't match charting tools.
+
+**Population stddev for Bollinger.** `rolling(window=20).std(ddof=0)` matches every charting tool I've checked; pandas' default `ddof=1` (sample stddev) produces subtly different bands.
+
+**Decimal precision is preserved end-to-end.** `indicator_snapshots.value` is `NUMERIC(28, 12)` so cumulative indicators (OBV can hit ~10^13 for mega-caps) and ratios both fit. The writer routes floats through `Decimal(str(...))` to dodge the pandas→numpy→psycopg float-binding precision loss.
+
+**Indicator math vs price-axis indicators.** Return-sensitive indicators (RSI, ROC, MACD, the moving averages that feed crosses) read `adj_close`. Price-level indicators (Pivots, ADX's true range, Stochastic's high/low range) read raw `high`/`low`/`close`. This split is intentional — keep it when adding new indicators.
+
+**Anchored VWAP is not intraday VWAP.** The 52-week-low and 52-week-high anchors are the EOD substitute; surface the chosen anchor in UI labels so users aren't misled. True intraday VWAP requires data we don't ingest.
+
+**Engine fans out per-ticker.** `run_for_all_tickers()` loops over tickers serially with per-ticker failure isolation. Parallelism, if ever needed, happens at the ticker loop — not inside indicators.
 
 ## Coding conventions (these are non-default)
 
