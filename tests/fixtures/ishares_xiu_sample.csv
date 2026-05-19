@@ -1,0 +1,10 @@
+"iShares S&P/TSX 60 Index ETF"
+"Fund Holdings as of","08/May/2026"
+"Inception Date","04/Sep/1999"
+"Shares Outstanding","405,000,000"
+
+"Ticker","Name","Sector","Asset Class","Market Value","Weight (%)","Notional Value","Quantity","Price","Location","Exchange","Currency","FX Rate","Market Currency","Accrual Date"
+"RY","ROYAL BANK OF CANADA","Financials","Equity","CAD 2,345,678,901.23","9.20","2345678901.23","15234567","154.05","Canada","TSX","CAD","1.00","CAD","-"
+"SHOP","SHOPIFY INC","Information Technology","Equity","CAD 1,876,543,210.55","7.36","1876543210.55","12345678","152.00","Canada","TSX","CAD","1.00","CAD","-"
+"CNR","CANADIAN NATIONAL RAILWAY","Industrials","Equity","CAD 1,234,567,890.12","4.84","1234567890.12","8123456","152.04","Canada","TSX","CAD","1.00","CAD","-"
+"CAD","CANADIAN DOLLAR","Cash and/or Derivatives","Cash","CAD 5,432,109.87","0.02","5432109.87","5432110","1.00","Canada","-","CAD","1.00","CAD","-"

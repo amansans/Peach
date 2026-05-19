@@ -1,0 +1,205 @@
+###############################################################################
+# Peach — Multi-Layer Stock Screening & Analysis Platform
+#
+# Single source of truth for project metadata, runtime dependencies, dev
+# tooling configuration, and packaging.  Managed by `uv`:
+#
+#     uv sync                  # install runtime + dev deps from uv.lock
+#     uv lock                  # regenerate uv.lock after editing dependencies
+#     uv run <cmd>             # run a command inside the project env
+#
+# Why `uv`?  It is dramatically faster than pip + pip-tools and produces a
+# lockfile by default so reproducible builds aren't an afterthought.  The
+# lockfile (`uv.lock`) is committed to source control.
+#
+# Why pin minimum versions only here?  Hard pinning lives in `uv.lock`.  Using
+# minimum-version specifiers here lets `uv lock` upgrade us when we explicitly
+# regenerate the lockfile, but never silently between developer machines.
+###############################################################################
+
+[project]
+name = "peach"
+version = "0.0.1"
+description = "Multi-layer stock screening and analysis platform for SP500 / NDX / DJI."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+authors = [{ name = "Aman" }]
+
+# ---------------------------------------------------------------------------
+# Runtime dependencies
+# ---------------------------------------------------------------------------
+# Each dependency is grouped under a comment block describing why it is here.
+# When adding a new dependency, drop it in the appropriate block; if it does
+# not fit any block, the block list itself needs to be re-evaluated.
+# ---------------------------------------------------------------------------
+dependencies = [
+    # --- Persistence layer ----------------------------------------------------
+    # SQLAlchemy 2.x uses the new typed declarative API (Mapped[...]) which
+    # plays well with mypy --strict.  Alembic handles migrations exclusively;
+    # the application never issues DDL at runtime.
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13.2",
+    # psycopg 3 is the modern Postgres driver.  The `[binary]` extra ships
+    # pre-built wheels so contributors don't need libpq + a C compiler.
+    "psycopg[binary]>=3.2.1",
+
+    # --- Configuration --------------------------------------------------------
+    # pydantic-settings is how `config/settings.py` loads + validates env vars
+    # and `.env` files.  Typos in env-var names fail at process startup, not
+    # at the first runtime request that happens to need that setting.
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    # PyYAML parses the YAML files under `config/` (indicators, fundamentals,
+    # rules, universes, source-priority).
+    "pyyaml>=6.0.1",
+
+    # --- Auth (Phase 0 ships the users table; Phase 4 wires the API) ---------
+    # bcrypt is used directly (no passlib) — passlib has been unmaintained
+    # since 2020 and we don't need its many algorithm shims.
+    "bcrypt>=4.1.3",
+
+    # --- CLI / scripts --------------------------------------------------------
+    # Typer wraps Click with type-hint based argument parsing, giving us
+    # consistent CLI ergonomics across every `scripts/*.py` entry point.
+    "typer>=0.12.3",
+
+    # --- Logging --------------------------------------------------------------
+    # structlog produces JSON log lines so they're trivially grep-able and
+    # shippable to a log aggregator later if we ever need one.
+    "structlog>=24.2.0",
+
+    # --- HTTP + retries (Phase 1 onwards) -------------------------------------
+    # httpx is the modern requests-replacement: async-capable, supports
+    # HTTP/2, has a sane timeout API, and ships type hints.
+    "httpx>=0.27.0",
+    # tenacity wraps every outbound network call with retry+backoff so a
+    # transient blip during a 530-ticker ingest doesn't abort the run.
+    "tenacity>=8.3.0",
+
+    # --- HTML / data parsing (Phase 1) ----------------------------------------
+    # BeautifulSoup + lxml parse Wikipedia constituent tables.  pandas
+    # is used by both the issuer-CSV loader and Stooq's price CSV parser;
+    # it'll be heavily used from Phase 2 (indicators) onwards as well.
+    "beautifulsoup4>=4.12.3",
+    "lxml>=5.2.0",
+    "pandas>=2.2.0",
+
+    # --- yfinance fallback (Phase 1) ------------------------------------------
+    # Used ONLY as a gap-fill source when Stooq returns no data for a
+    # ticker.  Stooq is the primary; the plan rejects yfinance fundamentals
+    # outright and treats yfinance prices as best-effort.
+    "yfinance>=0.2.40",
+]
+
+# ---------------------------------------------------------------------------
+# Optional dependency groups
+# ---------------------------------------------------------------------------
+# Installed via `uv sync --extra dev` (or `--all-extras`).  Keeping these out
+# of the main dependency list keeps production deploys lean and makes the
+# distinction between "needed in prod" vs "needed only for development"
+# explicit.
+# ---------------------------------------------------------------------------
+[project.optional-dependencies]
+dev = [
+    # Test runner + coverage measurement
+    "pytest>=8.2.0",
+    "pytest-cov>=5.0.0",
+
+    # Lint + format (replaces black, isort, flake8 in one fast binary)
+    "ruff>=0.5.0",
+
+    # Static type checker — configured strict below
+    "mypy>=1.10.0",
+
+    # Git pre-commit hook runner (configured in .pre-commit-config.yaml)
+    "pre-commit>=3.7.0",
+
+    # Stub packages so mypy can type-check our pyyaml / passlib usage
+    "types-pyyaml>=6.0.12",
+]
+
+
+###############################################################################
+# Build system — hatchling produces the wheel/sdist when we ever need to
+# package this for a remote host.  uv reads this to know how to build.
+###############################################################################
+[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"
+
+# Tell hatchling where the importable package lives.  Without this, hatchling
+# would try to auto-detect and fail because there is more than one top-level
+# directory (peach/ and config/).
+[tool.hatch.build.targets.wheel]
+packages = ["peach"]
+
+
+###############################################################################
+# Tooling configuration
+###############################################################################
+
+# ---------------------------------------------------------------------------
+# Ruff — lint + format.  Replaces black, isort, flake8, pyupgrade, etc.
+# We turn on a deliberately broad rule set; "noqa" comments document each
+# intentional exception inline.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["alembic/versions"]  # Auto-generated migrations are noisy
+
+[tool.ruff.lint]
+# E/W   — pycodestyle errors and warnings (PEP 8 violations)
+# F     — pyflakes (undefined names, unused imports)
+# I     — isort (import ordering)
+# B     — flake8-bugbear (likely bugs)
+# UP    — pyupgrade (use modern syntax)
+# SIM   — flake8-simplify (suggest simpler forms)
+# RUF   — Ruff's own opinionated rules
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
+# E501 is line-too-long — handled by the formatter, no need to also lint it.
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+
+# ---------------------------------------------------------------------------
+# mypy — static type checker.  Strict mode catches the most common bug
+# categories (missing return types, untyped function calls, optional / None
+# misuse).  Migrations and tests are excluded for pragmatic reasons.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# Pretty output makes errors easier to scan during dev.
+pretty = true
+show_error_codes = true
+# Without this, mypy would complain about every third-party package that
+# doesn't ship its own .pyi stubs (yfinance, fredapi later, etc.).
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Alembic migrations are auto-generated and intentionally untyped.  Trying to
+# strictly type them produces more noise than signal.
+module = "alembic.versions.*"
+ignore_errors = true
+
+
+# ---------------------------------------------------------------------------
+# pytest — test discovery + ergonomic defaults.
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# -ra: short summary of non-passing tests at the end
+# --strict-markers: typos in @pytest.mark.foo are errors, not silent skips
+# --strict-config: typos in this file fail loudly
+addopts = "-ra --strict-markers --strict-config"
+# Custom markers must be declared so `--strict-markers` can enforce them.
+markers = [
+    "integration: tests that require a running Postgres (slow)",
+    "slow: tests that take more than ~1 second",
+]
