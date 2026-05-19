@@ -50,7 +50,12 @@ app = typer.Typer(add_completion=False, help=__doc__)
 
 # Indices we operate on.  Adding a new index means updating both this
 # list AND the seed script (so the row exists in `indices`).
-TRACKED_INDICES: list[str] = ["SP500", "NDX", "DJI"]
+#
+# US: SP500, NDX, DJI.   CA: TSX60, TSXC.
+# The orchestrator resolves the listing country from each index's
+# ``country_code`` column and routes price ingestion to ``.us`` vs ``.ca``
+# Stooq URLs automatically.
+TRACKED_INDICES: list[str] = ["SP500", "NDX", "DJI", "TSX60", "TSXC"]
 
 
 @app.command()

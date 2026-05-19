@@ -34,34 +34,37 @@ log = structlog.get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _ensure_default_exchange_id(session: Session) -> int:
-    """Return an exchange_id we can attach to brand-new tickers.
+def _resolve_exchange_id(session: Session, code: str) -> int:
+    """Look up an exchange row by MIC code and return its id.
 
-    In Phase 1 we don't yet know the listing exchange for tickers
-    discovered via membership scraping.  Rather than guess, we attach
-    every new ticker to XNAS (placeholder).  Phase 5+ enrichment will
-    correct the exchange via SEC / OpenFIGI lookup.
+    Hard-fails if the requested exchange isn't seeded — the bootstrap
+    script is the canonical source of exchange rows.
 
-    Why a function call rather than a module-level constant?  The seeded
-    row IDs are not stable across database resets — looking them up by
-    code is the only reliable path.
+    Why a function call rather than a module-level constant?  Seeded
+    row IDs are not stable across database resets; lookup by code is
+    the only reliable path.
     """
-    exchange = session.scalars(select(Exchange).where(Exchange.code == "XNAS")).first()
+    exchange = session.scalars(select(Exchange).where(Exchange.code == code)).first()
     if exchange is None:  # pragma: no cover - seed script enforces this
         raise RuntimeError(
-            "XNAS exchange row missing — run `make seed` to bootstrap reference data."
+            f"{code} exchange row missing — run `make seed` to bootstrap reference data."
         )
     return exchange.id
 
 
-def resolve_or_create_ticker(session: Session, symbol: str) -> Ticker:
+def resolve_or_create_ticker(
+    session: Session,
+    symbol: str,
+    exchange_code: str = "XNAS",
+) -> Ticker:
     """Look up a ``Ticker`` by symbol; create a stub row if missing.
 
     Stub rows are deliberately minimal:
 
     * ``name`` defaults to the symbol — better than NULL, gets enriched
       by Phase 5 EDGAR ingestion;
-    * ``exchange_id`` falls back to XNAS placeholder;
+    * ``exchange_id`` is the exchange named by ``exchange_code`` (XNAS
+      placeholder for US listings, XTSE for TSX listings);
     * ``is_active`` defaults to True.
 
     This function exists because ingestion learns about new tickers
@@ -77,6 +80,12 @@ def resolve_or_create_ticker(session: Session, symbol: str) -> Ticker:
     symbol
         Equity symbol.  Lookups are case-sensitive against the
         ``tickers.symbol`` column — Phase 1 always uses uppercase.
+    exchange_code
+        MIC code of the listing exchange to attach to a *newly created*
+        stub.  Has no effect on lookups that find an existing row (the
+        ticker's exchange is the authoritative answer once it exists).
+        Defaults to ``"XNAS"`` because that's the right placeholder for
+        the US universe and most call sites are US-only.
 
     Returns
     -------
@@ -87,11 +96,11 @@ def resolve_or_create_ticker(session: Session, symbol: str) -> Ticker:
     if existing is not None:
         return existing
 
-    log.info("writers.ticker_stub_created", symbol=symbol)
+    log.info("writers.ticker_stub_created", symbol=symbol, exchange_code=exchange_code)
     stub = Ticker(
         symbol=symbol,
         name=symbol,
-        exchange_id=_ensure_default_exchange_id(session),
+        exchange_id=_resolve_exchange_id(session, exchange_code),
         is_active=True,
     )
     session.add(stub)
@@ -195,6 +204,8 @@ def sync_current_memberships(
     session: Session,
     index_code: str,
     rows: Iterable[ParsedMembership],
+    *,
+    default_exchange_code: str = "XNAS",
 ) -> tuple[int, int, int]:
     """Reconcile a fresh "current members" list with the membership table.
 
@@ -233,10 +244,15 @@ def sync_current_memberships(
         raise RuntimeError(f"Index {index_code!r} not found — run `make seed` to bootstrap.")
 
     # Map fresh symbols -> ticker rows (creating stubs as needed).
+    # ``default_exchange_code`` only affects stubs that don't yet exist —
+    # an existing ticker keeps its current ``exchange_id`` regardless of
+    # which index discovered it on this run.
     fresh_tickers: dict[str, Ticker] = {}
     for r in rows:
         if r.ticker_symbol not in fresh_tickers:
-            fresh_tickers[r.ticker_symbol] = resolve_or_create_ticker(session, r.ticker_symbol)
+            fresh_tickers[r.ticker_symbol] = resolve_or_create_ticker(
+                session, r.ticker_symbol, exchange_code=default_exchange_code
+            )
 
     # Current open-ended memberships for this index.
     open_periods = (

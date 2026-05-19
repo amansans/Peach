@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project context
 
-Peach is a multi-layer stock screening platform for the SP500 + Nasdaq-100 + Dow Jones universe (~530 tickers). The architectural plan — including phased build order, design rationale, indicator inventory, and hosting tiers — lives at `/root/.claude/plans/do-not-use-the-happy-dongarra.md`. **Read that plan before making non-trivial changes.**
+Peach is a multi-layer stock screening platform for the SP500 + Nasdaq-100 + Dow Jones + S&P/TSX 60 + S&P/TSX Composite universe (~750 tickers). The architectural plan — including phased build order, design rationale, indicator inventory, and hosting tiers — lives at `/root/.claude/plans/do-not-use-the-happy-dongarra.md`. **Read that plan before making non-trivial changes.**
 
 **Status:**
 - **Phase 0 complete** — skeleton, reference schema, bootstrap scripts.
@@ -70,9 +70,14 @@ Migrations: edit ORM models in `peach/db/models/`, then `make migrate-create msg
 
 **Network-fetching functions get `@network_retry`** from `peach.ingestion.base`. Source-level code catches `httpx.HTTPError` and re-raises as `NetworkError` so the tenacity-driven retry sees a uniform signal. 4xx responses do NOT retry (a 404 is "wrong URL", not "flaky server").
 
-**Source attribution is queryable.** Every OHLCV row and membership row carries a `source` column with stable string values (`stooq`, `yfinance_gapfill`, `wikipedia`, `ishares_ivv`, `invesco_qqq`, `ishares_dia`). `SELECT source, count(*) FROM ohlcv_daily GROUP BY source` audits provenance at any time.
+**Source attribution is queryable.** Every OHLCV row and membership row carries a `source` column with stable string values (`stooq`, `yfinance_gapfill`, `wikipedia`, `ishares_ivv`, `invesco_qqq`, `ishares_dia`, `ishares_xiu`, `ishares_xic`). `SELECT source, count(*) FROM ohlcv_daily GROUP BY source` audits provenance at any time.
 
-**Deferred to its own one-shot scraper**: Wikipedia *revision-history* parsing for SP500/DJI deep history. The current Wikipedia source reads only the live constituent table. The schema (`valid_from`/`valid_to`) is forward-compatible — historical rows can be backfilled later without rework.
+**Canadian (TSX) listings live alongside US.** `exchanges.country_code` (`US` / `CA`) is the canonical hook for the US-vs-Canadian-stocks filter — the screener joins `tickers → exchanges → country_code` to scope a run. TSX-listed symbols are stored with a `.TO` suffix (e.g., `RY.TO`) so they never collide with same-named US tickers under the unique `tickers.symbol` constraint. Each index also has its own `country_code`, which the orchestrator reads to:
+- pick the default listing exchange (`XNAS` for US indices, `XTSE` for TSX) when creating new ticker stubs;
+- pick the Stooq URL suffix (`.us` vs `.ca`) when fetching prices.
+The yfinance fallback reads the symbol verbatim — Yahoo's API already expects the `.TO` suffix.
+
+**Deferred to its own one-shot scraper**: Wikipedia *revision-history* parsing for SP500/DJI/TSX deep history. The current Wikipedia source reads only the live constituent table. The schema (`valid_from`/`valid_to`) is forward-compatible — historical rows can be backfilled later without rework.
 
 ## Indicator architecture (Phase 2)
 

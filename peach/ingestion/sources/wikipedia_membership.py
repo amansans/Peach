@@ -42,11 +42,25 @@ log = structlog.get_logger(__name__)
 
 # URL per index_code.  Centralised so the scraper can be redirected to a
 # fixture file in tests by monkeypatching this dict.
+#
+# Symbol convention for Canadian listings
+# ---------------------------------------
+# The Wikipedia TSX 60 / TSX Composite tables list bare TSX symbols
+# (e.g., ``RY``).  Our storage convention adds a ``.TO`` suffix so the
+# US ``RY`` (Royal Bank ADR on NYSE) and the TSX ``RY`` are stored as
+# distinct ticker rows.  :func:`parse_constituent_table` appends the
+# suffix for Canadian indices.
 WIKIPEDIA_URLS: dict[str, str] = {
     "SP500": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
     "NDX": "https://en.wikipedia.org/wiki/Nasdaq-100",
     "DJI": "https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average",
+    "TSX60": "https://en.wikipedia.org/wiki/S%26P/TSX_60",
+    "TSXC": "https://en.wikipedia.org/wiki/S%26P/TSX_Composite_Index",
 }
+
+# Indices whose constituents are TSX-listed.  Parsed symbols from these
+# pages get a ``.TO`` suffix appended to match our storage convention.
+_TSX_INDEX_CODES: frozenset[str] = frozenset({"TSX60", "TSXC"})
 
 
 def parse_constituent_table(html: str, index_code: str) -> list[ParsedMembership]:
@@ -81,6 +95,9 @@ def parse_constituent_table(html: str, index_code: str) -> list[ParsedMembership
     soup = BeautifulSoup(html, "lxml")
     today = utcnow().date()
     rows: list[ParsedMembership] = []
+    # TSX-listed symbols get a ``.TO`` suffix so they don't collide with
+    # any same-named US ticker in the unique ``tickers.symbol`` index.
+    add_tsx_suffix = index_code in _TSX_INDEX_CODES
 
     for table in soup.find_all("table", class_="wikitable"):
         header = table.find("tr")
@@ -111,6 +128,10 @@ def parse_constituent_table(html: str, index_code: str) -> list[ParsedMembership
                 # blobs without rejecting legitimate symbols like
                 # "BRK.B" or "BF.B".
                 continue
+            # TSX rows get the ``.TO`` suffix only if not already present
+            # (defensive — some Wikipedia pages render it inline).
+            if add_tsx_suffix and not symbol.upper().endswith(".TO"):
+                symbol = f"{symbol}.TO"
             rows.append(_membership(index_code, symbol, today))
 
         if rows:

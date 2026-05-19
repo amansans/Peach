@@ -52,6 +52,13 @@ class Exchange(Base, TimestampMixin):
     # Human-readable name.
     name: Mapped[str] = mapped_column(String(128), nullable=False)
 
+    # ISO 3166-1 alpha-2 country code of the exchange itself (e.g., "US"
+    # for XNAS/XNYS, "CA" for XTSE).  This is the canonical hook for
+    # the US-vs-Canadian-stocks filter — joining ``tickers → exchanges
+    # → country_code`` is unambiguous (the *listing* country, regardless
+    # of where the issuer is headquartered).
+    country_code: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+
     # Reverse relationship — populated by `Ticker.exchange`.  Useful for
     # admin pages that list "all tickers on XNAS" without an explicit join.
     tickers: Mapped[list[Ticker]] = relationship(
@@ -136,10 +143,12 @@ class Sector(Base, TimestampMixin):
 class Index(Base, TimestampMixin):
     """A market index whose constituents we track.
 
-    Three rows exist in v1:
-        SP500 — S&P 500
-        NDX   — Nasdaq-100
-        DJI   — Dow Jones Industrial Average
+    Rows in v1:
+        SP500  — S&P 500                                       (US)
+        NDX    — Nasdaq-100                                    (US)
+        DJI    — Dow Jones Industrial Average                  (US)
+        TSX60  — S&P/TSX 60                                    (CA)
+        TSXC   — S&P/TSX Composite                             (CA)
 
     The *constituents* of each index are stored in `index_memberships`
     (Phase 1) with `valid_from` / `valid_to` so we can answer "who was in
@@ -158,6 +167,16 @@ class Index(Base, TimestampMixin):
     # "nasdaq" for NDX, or "ishares" / "invesco" if we use the issuer ETF
     # holdings as the ground truth (recommended for ongoing tracking).
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    # ISO 3166-1 alpha-2 country code of the index's home market.  Used
+    # by ingestion to:
+    # (a) pick the default listing exchange for a new ticker stub
+    #     (US-only indices → XNAS; CA-only indices → XTSE);
+    # (b) pick the right Stooq URL suffix (.us vs .ca) and the right
+    #     yfinance symbol suffix (.TO for TSX).
+    # `country_code='US'` for SP500/NDX/DJI; `country_code='CA'` for
+    # TSX60/TSXC.
+    country_code: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
 
 
 # ---------------------------------------------------------------------------

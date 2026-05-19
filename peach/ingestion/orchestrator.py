@@ -27,7 +27,9 @@ from __future__ import annotations
 from datetime import date
 
 import structlog
+from sqlalchemy import select
 
+from peach.db.models.reference import Exchange, Index, Ticker
 from peach.db.session import session_scope
 from peach.ingestion.base import ParsedMembership, ParsedOHLCV
 from peach.ingestion.sources.issuer_csv_membership import IssuerCsvMembershipSource
@@ -37,6 +39,14 @@ from peach.ingestion.sources.yfinance_source import YFinanceSource
 from peach.ingestion.writers import sync_current_memberships, upsert_ohlcv_rows
 
 log = structlog.get_logger(__name__)
+
+
+# Country code → default listing-exchange MIC.  Centralised so the
+# choice is in one place and trivially extensible (LSE → XLON, etc.).
+_DEFAULT_EXCHANGE_FOR_COUNTRY: dict[str, str] = {
+    "US": "XNAS",
+    "CA": "XTSE",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +119,19 @@ def refresh_index_memberships(index_code: str) -> tuple[int, int, int]:
         n=len(rows),
     )
 
+    # Look up the index's listing country so newly-created ticker stubs
+    # get the right default exchange (XNAS for US indices, XTSE for TSX).
     with session_scope() as session:
-        return sync_current_memberships(session, index_code, rows)
+        country = session.scalar(select(Index.country_code).where(Index.code == index_code))
+    default_exchange = _DEFAULT_EXCHANGE_FOR_COUNTRY.get(country or "US", "XNAS")
+
+    with session_scope() as session:
+        return sync_current_memberships(
+            session,
+            index_code,
+            rows,
+            default_exchange_code=default_exchange,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -118,14 +139,38 @@ def refresh_index_memberships(index_code: str) -> tuple[int, int, int]:
 # ---------------------------------------------------------------------------
 
 
+def _country_for_symbols(symbols: list[str]) -> dict[str, str]:
+    """Look up each symbol's listing country (via its exchange) in one query.
+
+    Pre-fetching avoids N+1 round-trips inside the per-symbol loop and
+    keeps the orchestrator's main flow readable.  Symbols not yet in the
+    ``tickers`` table fall back to ``"US"`` — the safe default for a
+    not-yet-curated row (Stooq's ``.us`` suffix is what most US tickers
+    use; a CA-only symbol that lands here without a prior membership
+    refresh is a rare ordering edge case).
+    """
+    if not symbols:
+        return {}
+    with session_scope() as session:
+        rows = session.execute(
+            select(Ticker.symbol, Exchange.country_code)
+            .join(Exchange, Ticker.exchange_id == Exchange.id)
+            .where(Ticker.symbol.in_(symbols))
+        ).all()
+    return {s: c for s, c in rows}
+
+
 def ingest_prices_for_tickers(symbols: list[str], start: date, end: date) -> dict[str, int]:
     """Backfill or update OHLCV for each symbol in ``[start, end]``.
 
     For each symbol:
 
-    1.  Try Stooq — primary source per the plan.
+    1.  Try Stooq — primary source per the plan.  URL suffix (``.us`` /
+        ``.ca``) is picked from the ticker's listing exchange country.
     2.  If Stooq returns zero rows (the documented "No data" path),
-        fall back to yfinance.
+        fall back to yfinance.  yfinance reads the symbol verbatim;
+        the ``.TO`` storage suffix for TSX names is already what
+        Yahoo expects.
     3.  Upsert the resulting bars.  Errors on individual symbols are
         logged but do not abort the batch — a single ticker failure
         shouldn't sink the daily run.
@@ -139,14 +184,19 @@ def ingest_prices_for_tickers(symbols: list[str], start: date, end: date) -> dic
     stooq = StooqSource()
     yfin = YFinanceSource()
     results: dict[str, int] = {}
+    country_by_symbol = _country_for_symbols(symbols)
 
     for symbol in symbols:
+        country = country_by_symbol.get(symbol, "US")
         try:
-            stooq_rows: list[ParsedOHLCV] = list(stooq.fetch_ohlcv(symbol, start, end))
+            stooq_rows: list[ParsedOHLCV] = list(
+                stooq.fetch_ohlcv(symbol, start, end, country_code=country)
+            )
         except Exception as exc:
             log.warning(
                 "orchestrator.prices.stooq_failed",
                 symbol=symbol,
+                country=country,
                 error=str(exc),
             )
             stooq_rows = []
@@ -155,17 +205,18 @@ def ingest_prices_for_tickers(symbols: list[str], start: date, end: date) -> dic
             rows = stooq_rows
         else:
             try:
-                rows = list(yfin.fetch_ohlcv(symbol, start, end))
+                rows = list(yfin.fetch_ohlcv(symbol, start, end, country_code=country))
             except Exception as exc:
                 log.warning(
                     "orchestrator.prices.yfinance_failed",
                     symbol=symbol,
+                    country=country,
                     error=str(exc),
                 )
                 rows = []
 
         if not rows:
-            log.warning("orchestrator.prices.empty", symbol=symbol)
+            log.warning("orchestrator.prices.empty", symbol=symbol, country=country)
             results[symbol] = 0
             continue
 

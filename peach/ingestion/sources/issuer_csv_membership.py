@@ -62,7 +62,12 @@ def _find_header_row(lines: list[str]) -> int:
     raise ValueError("iShares CSV: header row containing 'Ticker' not found")
 
 
-def parse_ishares_csv(content: str, index_code: str, source_name: str) -> list[ParsedMembership]:
+def parse_ishares_csv(
+    content: str,
+    index_code: str,
+    source_name: str,
+    country_code: str = "US",
+) -> list[ParsedMembership]:
     """Parse an iShares daily-holdings CSV.
 
     Parameters
@@ -70,10 +75,15 @@ def parse_ishares_csv(content: str, index_code: str, source_name: str) -> list[P
     content
         Raw CSV text.
     index_code
-        Peach index code for the resulting rows (``SP500`` / ``DJI``).
+        Peach index code for the resulting rows (``SP500`` / ``DJI`` /
+        ``TSX60`` / ``TSXC``).
     source_name
         Source-attribution string — distinct values per fund so we can
         audit which ETF a row came from.
+    country_code
+        Listing country of the fund.  ``"CA"`` means the symbols in the
+        CSV are TSX tickers and need a ``.TO`` suffix appended so they
+        don't collide with same-named US tickers in our DB.
 
     Returns
     -------
@@ -91,6 +101,7 @@ def parse_ishares_csv(content: str, index_code: str, source_name: str) -> list[P
     today = utcnow().date()
     rows: list[ParsedMembership] = []
     reader = csv.DictReader(io.StringIO(body))
+    add_tsx_suffix = country_code.upper() == "CA"
 
     for raw in reader:
         if not raw.get("Ticker"):
@@ -102,6 +113,8 @@ def parse_ishares_csv(content: str, index_code: str, source_name: str) -> list[P
         symbol = raw["Ticker"].strip()
         if not symbol:
             continue
+        if add_tsx_suffix and not symbol.upper().endswith(".TO"):
+            symbol = f"{symbol}.TO"
         rows.append(
             ParsedMembership(
                 index_code=index_code,
@@ -182,22 +195,44 @@ def parse_invesco_csv(content: str, index_code: str, source_name: str) -> list[P
 # URLs centralised so they're greppable and mockable.  These are the
 # canonical published locations as of the project start; if issuers
 # change URLs, this dict is the only place to update.
-ISSUER_URLS: dict[str, tuple[str, str]] = {
-    # index_code -> (url, source_name)
+#
+# Canadian funds (XIU = TSX 60, XIC = TSX Composite) live on
+# ``blackrock.com/ca`` rather than ``ishares.com/us``; the CSV format is
+# identical to the US iShares funds (same metadata preamble + Asset Class
+# column), so :func:`parse_ishares_csv` handles both.
+ISSUER_URLS: dict[str, tuple[str, str, str]] = {
+    # index_code -> (url, source_name, country_code)
     "SP500": (
         "https://www.ishares.com/us/products/239726/ishares-core-sp-500-etf/"
         "1467271812596.ajax?fileType=csv&fileName=IVV_holdings&dataType=fund",
         "ishares_ivv",
+        "US",
     ),
     "DJI": (
         "https://www.ishares.com/us/products/239725/ishares-dow-jones-industrial-average-etf/"
         "1467271812596.ajax?fileType=csv&fileName=DIA_holdings&dataType=fund",
         "ishares_dia",
+        "US",
     ),
     "NDX": (
         "https://www.invesco.com/us/financial-products/etfs/holdings/main/holdings/0?"
         "audienceType=Investor&action=download&ticker=QQQ",
         "invesco_qqq",
+        "US",
+    ),
+    "TSX60": (
+        "https://www.blackrock.com/ca/investors/en/products/239832/"
+        "ishares-sp-tsx-60-index-etf/1432522418301.ajax?"
+        "fileType=csv&fileName=XIU_holdings&dataType=fund",
+        "ishares_xiu",
+        "CA",
+    ),
+    "TSXC": (
+        "https://www.blackrock.com/ca/investors/en/products/239833/"
+        "ishares-sp-tsx-capped-composite-index-etf/1432522418301.ajax?"
+        "fileType=csv&fileName=XIC_holdings&dataType=fund",
+        "ishares_xic",
+        "CA",
     ),
 }
 
@@ -218,16 +253,25 @@ class IssuerCsvMembershipSource(DataSource):
         prefix.  KeyError on unknown index_code so we fail fast on a
         typo rather than silently return nothing.
         """
-        url, source_name = ISSUER_URLS[index_code]
-        log.info("issuer.fetch", index_code=index_code, url=url, source=source_name)
+        url, source_name, country_code = ISSUER_URLS[index_code]
+        log.info(
+            "issuer.fetch",
+            index_code=index_code,
+            url=url,
+            source=source_name,
+            country=country_code,
+        )
         # iShares serves charset-Latin1 with a UTF-8 BOM occasionally;
         # decode bytes ourselves so we control the encoding policy.
         body_bytes = fetch_bytes(url)
         content = body_bytes.decode("utf-8-sig", errors="replace")
 
         if source_name.startswith("ishares"):
-            return parse_ishares_csv(content, index_code, source_name)
+            return parse_ishares_csv(content, index_code, source_name, country_code)
         elif source_name.startswith("invesco"):
+            # Invesco's only entry (QQQ) is US-listed; if a CA Invesco
+            # fund ever shows up we'll thread country_code through here
+            # the same way the iShares branch does.
             return parse_invesco_csv(content, index_code, source_name)
         else:  # pragma: no cover - exhaustive guard
             raise ValueError(f"Unknown issuer source: {source_name}")

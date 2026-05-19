@@ -51,16 +51,41 @@ log = structlog.get_logger(__name__)
 # Observed in the wild as the literal string "No data".
 _STOOQ_NO_DATA_MARKER = "No data"
 
+# Stooq's per-country URL suffix.  Documented at https://stooq.com/db/.
+_COUNTRY_SUFFIX: dict[str, str] = {
+    "US": "us",
+    "CA": "ca",
+}
 
-def _build_url(symbol: str) -> str:
-    """Translate a US equity symbol to its Stooq daily-CSV URL.
 
-    Stooq uses lowercase symbols with a ``.us`` suffix.  Special-character
-    symbols (BRK.B → brk-b.us) get a hyphen substitution.
+def _build_url(symbol: str, country_code: str = "US") -> str:
+    """Translate an equity symbol to its Stooq daily-CSV URL.
+
+    Stooq uses lowercase symbols with a country suffix:
+
+    * US listings → ``{symbol}.us``  (e.g., ``aapl.us``)
+    * CA listings → ``{symbol}.ca``  (e.g., ``ry.ca``)
+
+    Special-character symbols (``BRK.B`` → ``brk-b.us``) get a hyphen
+    substitution.
+
+    Storage convention for Canadian listings
+    ----------------------------------------
+    We store TSX-listed symbols with a ``.TO`` suffix in our DB (e.g.,
+    ``RY.TO``).  Before composing the Stooq URL we strip that suffix —
+    Stooq's URL form is the bare TSX symbol plus ``.ca``.
     """
-    # The hyphen-for-dot substitution matches Stooq's URL convention.
-    canonical = symbol.lower().replace(".", "-")
-    return f"https://stooq.com/q/d/l/?s={canonical}.us&i=d"
+    # Strip the `.TO` Canadian-listing suffix from the symbol if present.
+    # We do this case-insensitively to be defensive about future
+    # mixed-case storage.
+    base = symbol
+    for suffix in (".TO", ".to"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    canonical = base.lower().replace(".", "-")
+    country_suffix = _COUNTRY_SUFFIX.get(country_code.upper(), "us")
+    return f"https://stooq.com/q/d/l/?s={canonical}.{country_suffix}&i=d"
 
 
 def parse_stooq_csv(content: str, symbol: str) -> list[ParsedOHLCV]:
@@ -149,15 +174,33 @@ class StooqSource(DataSource):
     def __init__(self) -> None:
         """No-op constructor — Stooq is stateless from our perspective."""
 
-    def fetch_ohlcv(self, symbol: str, start: date, end: date) -> Iterable[ParsedOHLCV]:
+    def fetch_ohlcv(
+        self,
+        symbol: str,
+        start: date,
+        end: date,
+        country_code: str = "US",
+    ) -> Iterable[ParsedOHLCV]:
         """Return OHLCV rows for ``symbol`` in ``[start, end]``.
 
         Stooq's URL does not accept date-range parameters — it always
         returns the full history.  We fetch once and filter in memory.
         That's still cheap (a 20-year payload is ~150 KB).
+
+        Parameters
+        ----------
+        symbol
+            Symbol as stored in the database (e.g., ``AAPL`` or ``RY.TO``).
+        start, end
+            Inclusive bar-date window for the returned rows.
+        country_code
+            ISO 3166-1 alpha-2 of the listing country.  Selects the
+            ``.us`` vs ``.ca`` URL suffix.  Defaults to ``"US"`` so
+            existing call sites that don't yet pass this argument keep
+            working for US listings.
         """
-        url = _build_url(symbol)
-        log.info("stooq.fetch", symbol=symbol, url=url)
+        url = _build_url(symbol, country_code)
+        log.info("stooq.fetch", symbol=symbol, country_code=country_code, url=url)
         body = fetch_text(url)
         rows = parse_stooq_csv(body, symbol)
         # Inclusive [start, end] window.

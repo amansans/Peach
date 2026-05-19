@@ -91,26 +91,50 @@ def _parse_yfinance_dataframe(df: Any, symbol: str) -> list[ParsedOHLCV]:
 
 
 class YFinanceSource(DataSource):
-    """yfinance adapter — gap-fill fallback only."""
+    """yfinance adapter — gap-fill fallback only.
+
+    Symbology
+    ---------
+    Yahoo's API expects Canadian listings with a ``.TO`` suffix (e.g.,
+    ``RY.TO``).  Our storage convention is to keep that suffix on
+    TSX-listed names, so we pass ``symbol`` through verbatim — the
+    ``country_code`` argument exists only to log provenance and make
+    the call signature symmetric with :class:`StooqSource.fetch_ohlcv`.
+    """
 
     NAME = "yfinance_gapfill"
 
     def __init__(self) -> None:
         """No-op — yfinance state lives in the library, not in us."""
 
-    def fetch_ohlcv(self, symbol: str, start: date, end: date) -> Iterable[ParsedOHLCV]:
+    def fetch_ohlcv(
+        self,
+        symbol: str,
+        start: date,
+        end: date,
+        country_code: str = "US",
+    ) -> Iterable[ParsedOHLCV]:
         """Fetch [start, end] OHLCV via yfinance.
 
         Notes
         -----
         yfinance treats the ``end`` parameter as *exclusive*, so we add
-        one day to keep our APIs uniformly inclusive.
+        one day to keep our APIs uniformly inclusive.  ``country_code``
+        is accepted (and logged) for parity with :class:`StooqSource`
+        but isn't actually consumed — the symbol's ``.TO`` suffix
+        already tells Yahoo which exchange to query.
         """
         # Lazy import — keeps `import peach` cheap and lets tests stub
         # out the dependency by monkeypatching this module.
         import yfinance as yf
 
-        log.info("yfinance.fetch", symbol=symbol, start=str(start), end=str(end))
+        log.info(
+            "yfinance.fetch",
+            symbol=symbol,
+            country_code=country_code,
+            start=str(start),
+            end=str(end),
+        )
         ticker = yf.Ticker(symbol)
         df = ticker.history(
             start=str(start),
